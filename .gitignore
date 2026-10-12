@@ -1,0 +1,17 @@
+# Запрошено: не пушить README
+README.md
+
+# Python / окружение
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Сборка PyInstaller
+build/
+dist/
+
+# IDE
+.idea/
+.vscode/
