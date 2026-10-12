@@ -9,19 +9,20 @@ import customtkinter as ctk
 import pystray
 
 from autostart import set_autostart
-from config import load_config
+from config import load_config, save_config
 from icon_utils import create_app_icon
 from reminder import ReminderWindow
 from settings_ui import SettingsWindow
+from theme import apply_app_theme, apply_scheme_from_config, sanitize_custom_colors
 from timer_engine import BreakTimer, TimerState
 
 
 class BreakPointApp:
     def __init__(self) -> None:
-        ctk.set_appearance_mode("System")
-        ctk.set_default_color_theme("green")
+        apply_app_theme()
 
         self.config = load_config()
+        apply_scheme_from_config(self.config)
         set_autostart(bool(self.config.get("autostart", False)))
 
         self.root = ctk.CTk()
@@ -101,20 +102,56 @@ class BreakPointApp:
         self._reminder = None
         self.timer.restart_work()
 
-    def _open_settings(self) -> None:
-        if self._settings is not None and self._settings.winfo_exists():
+    def _open_settings(self, draft: dict[str, Any] | None = None) -> None:
+        if draft is None and self._settings is not None and self._settings.winfo_exists():
             self._settings.lift()
             self._settings.focus_force()
             return
 
+        if self._settings is not None and self._settings.winfo_exists():
+            self._settings.destroy()
+
+        view_config = self._merge_draft(draft) if draft else dict(self.config)
         self._settings = SettingsWindow(
             master=self.root,
-            config=self.config,
+            config=view_config,
             on_saved=self._apply_config,
+            on_scheme_changed=self._on_scheme_changed,
         )
+
+    def _merge_draft(self, draft: dict[str, Any]) -> dict[str, Any]:
+        merged = dict(self.config)
+        merged["color_scheme"] = draft.get("color_scheme", merged.get("color_scheme"))
+        merged["custom_colors"] = sanitize_custom_colors(
+            draft.get("custom_colors", merged.get("custom_colors"))
+        )
+        merged["message"] = draft.get("message", merged.get("message"))
+        merged["sound_enabled"] = bool(draft.get("sound_enabled", merged.get("sound_enabled")))
+        merged["autostart"] = bool(draft.get("autostart", merged.get("autostart")))
+        merged["show_settings_on_startup"] = bool(
+            draft.get("show_settings_on_startup", merged.get("show_settings_on_startup"))
+        )
+        for key in ("work_interval_minutes", "break_duration_minutes", "snooze_minutes"):
+            raw = draft.get(key, merged.get(key))
+            try:
+                merged[key] = int(str(raw).strip())
+            except (TypeError, ValueError):
+                pass
+        return merged
+
+    def _on_scheme_changed(self, draft: dict[str, Any]) -> None:
+        merged = self._merge_draft(draft)
+        self.config["color_scheme"] = merged["color_scheme"]
+        self.config["custom_colors"] = merged["custom_colors"]
+        apply_scheme_from_config(self.config)
+        save_config(self.config)
+        self._refresh_tray_icon()
+        self.root.after(0, lambda: self._open_settings(merged))
 
     def _apply_config(self, updated: dict[str, Any]) -> None:
         self.config = updated
+        apply_scheme_from_config(updated)
+        self._refresh_tray_icon()
         self.timer.update_interval(int(updated["work_interval_minutes"]) * 60)
         if self.timer.state == TimerState.WORKING and not self.timer.is_paused():
             self.timer.restart_work()
@@ -137,6 +174,14 @@ class BreakPointApp:
         self._tray_icon = pystray.Icon("BreakPoint", image, "Break Point", menu)
         thread = threading.Thread(target=self._tray_icon.run, daemon=True)
         thread.start()
+
+    def _refresh_tray_icon(self) -> None:
+        if self._tray_icon is None:
+            return
+        try:
+            self._tray_icon.icon = create_app_icon(64)
+        except Exception:
+            pass
 
     def _build_tray_menu(self) -> pystray.Menu:
         pause_label = "Продолжить" if self.timer.is_paused() else "Пауза"

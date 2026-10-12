@@ -4,16 +4,21 @@ from __future__ import annotations
 
 from PIL import Image, ImageDraw
 
+from theme import COLORS, hex_to_rgb
 
-def create_app_icon(size: int = 64) -> Image.Image:
+
+def create_app_icon(size: int = 64, accent: str | None = None, hover: str | None = None) -> Image.Image:
+    fill = hex_to_rgb(accent or COLORS["accent"])
+    outline = hex_to_rgb(hover or COLORS["accent_hover"])
+
     image = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
 
     margin = size // 10
     draw.ellipse(
         (margin, margin, size - margin, size - margin),
-        fill=(46, 125, 90, 255),
-        outline=(28, 84, 58, 255),
+        fill=(*fill, 255),
+        outline=(*outline, 255),
         width=max(1, size // 32),
     )
 

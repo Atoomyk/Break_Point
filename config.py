@@ -8,6 +8,8 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from theme import DEFAULT_SCHEME, PRESETS, sanitize_custom_colors
+
 
 APP_NAME = "Break_Point"
 
@@ -19,6 +21,8 @@ DEFAULTS: dict[str, Any] = {
     "sound_enabled": True,
     "autostart": False,
     "show_settings_on_startup": False,
+    "color_scheme": DEFAULT_SCHEME,
+    "custom_colors": deepcopy(PRESETS[DEFAULT_SCHEME]),
 }
 
 
@@ -44,12 +48,13 @@ def load_config() -> dict[str, Any]:
         with path.open("r", encoding="utf-8") as fh:
             loaded = json.load(fh)
         if isinstance(loaded, dict):
-            data.update({k: loaded[k] for k in DEFAULTS if k in loaded})
+            for key in DEFAULTS:
+                if key in loaded:
+                    data[key] = loaded[key]
     except (OSError, json.JSONDecodeError):
         pass
 
-    data = _sanitize(data)
-    return data
+    return _sanitize(data)
 
 
 def save_config(data: dict[str, Any]) -> None:
@@ -77,6 +82,15 @@ def _sanitize(data: dict[str, Any]) -> dict[str, Any]:
     result["show_settings_on_startup"] = bool(
         data.get("show_settings_on_startup", DEFAULTS["show_settings_on_startup"])
     )
+
+    scheme = str(data.get("color_scheme", DEFAULT_SCHEME)).strip().lower()
+    # Старые пресеты olive/amber больше не поддерживаются.
+    if scheme in {"olive", "amber"}:
+        scheme = DEFAULT_SCHEME
+    if scheme not in PRESETS and scheme != "custom":
+        scheme = DEFAULT_SCHEME
+    result["color_scheme"] = scheme
+    result["custom_colors"] = sanitize_custom_colors(data.get("custom_colors"))
     return result
 
 
